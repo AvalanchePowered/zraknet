@@ -25,17 +25,17 @@ const RakNet = struct {
         defer self.alive = true;
 
         self.socket = os.socket(os.AF.INET, os.SOCK.DGRAM | os.SOCK.NONBLOCK, 0) catch {
-            log.err("Failed to create socket resource!", .{});
+            log.debug("Failed to create socket resource!", .{});
             return RakNetError.SocketError;
         };
 
         os.bind(self.socket.?, &address.any, @sizeOf(os.sockaddr.in)) catch |err| switch (err) {
             os.BindError.AddressInUse, os.BindError.AlreadyBound => {
-                log.err("Failed to bind, address already in use!", .{});
+                log.debug("Failed to bind, address already in use!", .{});
                 return RakNetError.AddressInUse;
             },
             else => {
-                log.err("Failed to bind! generic reason", .{});
+                log.debug("Failed to bind! generic reason", .{});
                 return RakNetError.BindingError;
             },
         };
@@ -45,7 +45,7 @@ const RakNet = struct {
     /// and frees resources if there are any
     pub fn close(self: *RakNet) RakNetError!void {
         if (!self.isAlive()) {
-            log.err("Cannot close an unitialized socket!", .{});
+            log.debug("Cannot close an unitialized socket!", .{});
             return RakNetError.NoSocket;
         }
 
