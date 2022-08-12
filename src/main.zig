@@ -2,9 +2,18 @@ const std = @import("std");
 const os = std.os;
 const net = std.net;
 const log = std.log;
+const fmt = std.fmt;
+const time = std.time;
 const testing = std.testing;
 
+const conn = @import("conn.zig");
+
 const RakNetError = error{ AlreadyStarted, AddressInUse, BindingError, SocketError, NoSocket };
+
+// Still under heavy development
+// pub const io_mode = .evented;
+
+pub const MAX_MTU_SIZE: u16 = 1500;
 
 const RakNet = struct {
     // Whatever the raknet instance is running or not
@@ -22,7 +31,7 @@ const RakNet = struct {
         // Handle twice listening, better to handle every case
         if (self.isAlive()) return RakNetError.AlreadyStarted;
         // Listen can be only called once!
-        defer self.alive = true;
+        self.alive = true;
 
         self.socket = os.socket(os.AF.INET, os.SOCK.DGRAM | os.SOCK.NONBLOCK, 0) catch {
             log.debug("Failed to create socket resource!", .{});
@@ -39,6 +48,44 @@ const RakNet = struct {
                 return RakNetError.BindingError;
             },
         };
+
+        // TODO: handle error cases
+        // When the thread finishes to run the given method, it will automatically freed up from memory
+        // we will lose any reference to that thread but whe don't care
+        const thread = std.Thread.spawn(.{}, receive, .{ self, std.Thread.getCurrentId() }) catch unreachable;
+        thread.setName("zRakNet: socket") catch unreachable;
+        thread.detach();
+    }
+
+    /// Reads packets continuously in a new thread
+    fn receive(self: *RakNet, caller_thread_id: std.Thread.Id) RakNetError!void {
+        if (!self.isAlive()) {
+            log.err("Cannot read packets without a socket!", .{});
+            return RakNetError.NoSocket;
+        }
+
+        // Make sure we are not in the main thread for some unknown reasons
+        const currentThreadId = std.Thread.getCurrentId();
+        if (caller_thread_id == currentThreadId) {
+            log.err("Cannot receive packets from the main thread!", .{});
+            return;
+        }
+
+        log.debug("Listening for packets on thread id={d}", .{currentThreadId});
+        var buffer: [1024]u8 = undefined;
+        while (self.isAlive()) {
+            const len = os.recv(self.socket.?, &buffer, 0) catch continue;
+            log.debug("{any}", .{fmt.fmtSliceHexLower(buffer[0..len])});
+        }
+    }
+
+    /// Accept is used to retrive connected clients from a Fifo queue
+    pub fn accept(self: *RakNet) RakNetError!?*conn.Conn {
+        if (!self.isAlive()) {
+            log.debug("Cannot accept connections without a socket!", .{});
+            return RakNetError.NoSocket;
+        }
+        return null;
     }
 
     /// Safely closes the socket if it's running
@@ -51,7 +98,9 @@ const RakNet = struct {
 
         self.alive = false;
 
+        // Free resources
         os.closeSocket(self.socket.?);
+        self.socket = null;
     }
 
     pub fn isAlive(self: *RakNet) bool {
@@ -60,8 +109,8 @@ const RakNet = struct {
 };
 
 /// Creates a raknet instance listening on the given address and port
-pub fn startup(max_connections: usize, hostname: []const u8, port: u16) !*RakNet {
-    var instance = &RakNet{ .max_connections = max_connections };
+pub fn startup(max_connections: usize, hostname: []const u8, port: u16) !RakNet {
+    var instance = RakNet{ .max_connections = max_connections };
 
     // Tries to parse the given address
     const address = try net.Address.parseIp4(hostname, port);
@@ -70,7 +119,9 @@ pub fn startup(max_connections: usize, hostname: []const u8, port: u16) !*RakNet
     return instance;
 }
 
-test "test singleton" {
-    _ = try startup(10, "0.0.0.0", 19132);
-    try testing.expectError(RakNetError.AddressInUse, startup(10, "0.0.0.0", 19132));
+test "test intance init & close" {
+    var instance = try startup(10, "0.0.0.0", 19132);
+    try testing.expectEqual(RakNet, @TypeOf(instance));
+    try instance.close();
+    try testing.expect(instance.isAlive() == false);
 }
