@@ -53,7 +53,7 @@ const RakNet = struct {
         // When the thread finishes to run the given method, it will automatically freed up from memory
         // we will lose any reference to that thread but whe don't care
         const thread = std.Thread.spawn(.{}, receive, .{ self, std.Thread.getCurrentId() }) catch unreachable;
-        thread.setName("zRakNet: socket") catch unreachable;
+        thread.setName("zRakNet: socket") catch {}; // Ignore if it's not supported in some OS
         thread.detach();
     }
 
