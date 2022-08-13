@@ -6,11 +6,12 @@ pub fn build(b: *std.build.Builder) void {
     const mode = b.standardReleaseOptions();
 
     const lib = b.addStaticLibrary("zraknet", "src/main.zig");
-    lib.linkLibC();
+    lib.linkLibC(); // Let's keep it here too for convenience
     lib.setBuildMode(mode);
     lib.install();
 
     const main_tests = b.addTest("src/main.zig");
+    main_tests.linkLibC();
     main_tests.setBuildMode(mode);
 
     const test_step = b.step("test", "Run library tests");
